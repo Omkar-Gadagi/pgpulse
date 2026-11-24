@@ -55,6 +55,19 @@ try {
 
 const sampler = startSampler({ intervalMs: config.sampleIntervalMs, collector: live.collector });
 
+// Friendly message for the most common startup failure instead of a stack trace.
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `[api] port ${config.port} is already in use. Is another pgPulse server running?\n` +
+        `      Stop it, or set SERVER_PORT in .env to a free port.`,
+    );
+  } else {
+    console.error('[api] server error:', err);
+  }
+  process.exit(1);
+});
+
 server.listen(config.port, () => {
   console.log(`[api] listening on http://localhost:${config.port}`);
   console.log(`[api] monitoring database "${databaseName(config.targetDatabaseUrl)}"`);

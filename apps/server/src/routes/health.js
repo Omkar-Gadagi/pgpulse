@@ -3,7 +3,10 @@
 // Always answers 200 while the API process itself works: an unreachable target
 // is reported in the body (targetReachable:false), not as a server error,
 // so the UI can show a friendly "database unreachable" state.
+//
+// Response: { ok, targetReachable, postgresVersion, database, error? }
 import { Router } from 'express';
+import { config, databaseName } from '../config.js';
 import { targetQuery } from '../db/target.js';
 import { loadSql } from '../sql/index.js';
 import { describeError } from '../lib/errors.js';
@@ -17,12 +20,14 @@ healthRouter.get('/health', async (_req, res) => {
     const { rows } = await targetQuery(SERVER_VERSION_SQL);
     // "16.11 (Debian 16.11-1.pgdg13+1)" -> "16.11"
     const postgresVersion = String(rows[0].version).split(' ')[0];
-    res.json({ ok: true, targetReachable: true, postgresVersion });
+    res.json({ ok: true, targetReachable: true, postgresVersion, database: rows[0].database });
   } catch (err) {
     res.json({
       ok: true,
       targetReachable: false,
       postgresVersion: null,
+      // Still useful for the UI when the database is down: name from the connection URL
+      database: databaseName(config.targetDatabaseUrl),
       error: describeError(err),
     });
   }
