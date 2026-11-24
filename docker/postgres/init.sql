@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS metric_samples (
   captured_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   active_connections     INT,
   idle_connections       INT,
+  idle_in_transaction_connections INT,
   total_connections      INT,
   tps                    NUMERIC,
   cache_hit_ratio        NUMERIC,

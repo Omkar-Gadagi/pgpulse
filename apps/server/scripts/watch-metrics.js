@@ -26,6 +26,14 @@ socket.on('metrics:update', (m) => {
   );
 });
 
+socket.on('queries:top', ({ queries }) => {
+  console.log('  top queries by total time:');
+  for (const q of queries) {
+    const sql = q.query.replace(/\s+/g, ' ').slice(0, 60);
+    console.log(`    ${String(q.percentOfTotal).padStart(6)}%  ${String(q.calls).padStart(8)} calls  ${sql}`);
+  }
+});
+
 socket.on('target:status', (s) => {
   // Plain ASCII so it renders in every terminal (Windows PowerShell included)
   console.log(s.reachable ? '[up]   target reachable' : `[down] target UNREACHABLE: ${s.error}`);

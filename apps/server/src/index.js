@@ -1,20 +1,26 @@
 // pgPulse API entry point: builds the Express app, attaches Socket.IO to the
-// same HTTP server, mounts routes, starts listening and shuts down cleanly.
+// same HTTP server, mounts routes, starts the history sampler, and shuts down
+// cleanly.
 import http from 'node:http';
 import express from 'express';
 import cors from 'cors';
 import { config, databaseName } from './config.js';
 import { targetPool } from './db/target.js';
 import { appPool } from './db/app.js';
+import { migrateAppDb } from './db/migrate.js';
 import { attachSocket } from './socket.js';
+import { startSampler } from './collectors/sampler.js';
+import { describeError } from './lib/errors.js';
 import { healthRouter } from './routes/health.js';
 import { createOverviewRouter } from './routes/overview.js';
+import { queriesRouter } from './routes/queries.js';
+import { metricsRouter } from './routes/metrics.js';
 
 const app = express();
 
 // One HTTP server shared by Express (REST) and Socket.IO (live updates).
 const server = http.createServer(app);
-const { io, collector } = attachSocket(server);
+const live = attachSocket(server);
 
 app.disable('x-powered-by');
 app.use(cors({ origin: config.corsOrigin }));
@@ -22,7 +28,9 @@ app.use(express.json());
 
 // ── Routes ───────────────────────────────────────────────────
 app.use('/api', healthRouter);
-app.use('/api', createOverviewRouter(collector));
+app.use('/api', createOverviewRouter(live.collector));
+app.use('/api', queriesRouter);
+app.use('/api', metricsRouter);
 
 // Unknown /api/* paths get JSON, not Express's default HTML page
 app.use('/api', (_req, res) => {
@@ -36,21 +44,34 @@ app.use((err, _req, res, _next) => {
 });
 
 // ── Start ────────────────────────────────────────────────────
+// Schema first, so the sampler's first INSERT has a table to write to.
+// If the app DB is down we still start: live metrics don't need it, and the
+// sampler logs and retries every interval.
+try {
+  await migrateAppDb();
+} catch (err) {
+  console.warn('[app-db] migration skipped (app database unreachable):', describeError(err));
+}
+
+const sampler = startSampler({ intervalMs: config.sampleIntervalMs, collector: live.collector });
+
 server.listen(config.port, () => {
   console.log(`[api] listening on http://localhost:${config.port}`);
   console.log(`[api] monitoring database "${databaseName(config.targetDatabaseUrl)}"`);
+  console.log(`[sampler] saving a history sample every ${config.sampleIntervalMs / 1000}s`);
 });
 
 // ── Graceful shutdown ────────────────────────────────────────
-// Stop accepting requests, then close both pools so Postgres sees clean
+// Stop timers and sockets, then close both pools so Postgres sees clean
 // disconnects instead of dropped sockets.
 let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`[api] ${signal} received, shutting down`);
-  collector.stop();
-  io.close(); // disconnects sockets and closes the HTTP server
+  sampler.stop();
+  live.stop();
+  live.io.close(); // disconnects sockets and closes the HTTP server
   await Promise.allSettled([targetPool.end(), appPool.end()]);
   process.exit(0);
 }
