@@ -15,6 +15,7 @@
     "dev": "npm run dev --workspaces --if-present",
     "dev:server": "npm run dev -w apps/server",
     "dev:web": "npm run dev -w apps/web",
+    "watch:metrics": "npm run watch -w apps/server",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "docker:up": "docker compose up --build",

@@ -26,7 +26,7 @@ services:
       READER_PASSWORD: ${READER_PASSWORD:?set READER_PASSWORD in .env}
     ports:
       # host:container — host side configurable in case 5432 is already taken
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Scripts in docker-entrypoint-initdb.d run ONLY on an empty data volume
