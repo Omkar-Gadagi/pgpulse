@@ -1,0 +1,63 @@
+# pgPulse — one-command demo
+#   docker compose up --build
+# Services: postgres (monitored + app DBs), loadgen (fake traffic).
+# The server and web services are added in later steps.
+
+name: pgpulse
+
+services:
+  postgres:
+    image: postgres:16
+    command:
+      - postgres
+      # pg_stat_statements must be loaded at server start to record query stats
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      # track statements inside functions too, not only top-level ones
+      - -c
+      - pg_stat_statements.track=all
+      # time spent reading/writing blocks — useful for later diagnostics pages
+      - -c
+      - track_io_timing=on
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      READER_USER: ${READER_USER:-pgpulse_reader}
+      READER_PASSWORD: ${READER_PASSWORD:?set READER_PASSWORD in .env}
+    ports:
+      # host:container — host side configurable in case 5432 is already taken
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Scripts in docker-entrypoint-initdb.d run ONLY on an empty data volume
+      - ./docker/postgres/init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+      - ./docker/postgres/init.sql:/pgpulse/init.sql:ro
+    healthcheck:
+      # -h localhost forces TCP: during first-run init Postgres only listens on
+      # a unix socket, so this check passes only once init has fully finished.
+      test: ["CMD-SHELL", "pg_isready -h localhost -U $${POSTGRES_USER} -d demo_shop"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  loadgen:
+    image: postgres:16
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${POSTGRES_USER:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: demo_shop
+    volumes:
+      - ./docker/loadgen/run.sh:/loadgen/run.sh:ro
+    # Run through bash so the script works even without the exec bit (Windows checkouts)
+    entrypoint: ["bash", "/loadgen/run.sh"]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
