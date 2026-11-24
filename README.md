@@ -32,17 +32,7 @@ Node.js server (Express + Socket.IO)
 
 React, TypeScript, Vite, Tailwind CSS, shadcn/ui, Highcharts, Socket.IO, Node.js, Express, PostgreSQL 16, Docker Compose.
 
-## Roadmap
 
-- [x] Monorepo setup
-- [ ] Docker demo: Postgres + load generator
-- [ ] Server: health, overview and queries API, live metrics over Socket.IO
-- [ ] Web: live dashboard
-- [ ] Web: slow queries page
-- [ ] Activity & locks page
-- [ ] Tables & indexes page
-- [ ] Alerts
-- [ ] Tests and CI
 
 ## License
 
