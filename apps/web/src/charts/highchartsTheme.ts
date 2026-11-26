@@ -15,7 +15,8 @@ export const highchartsTheme: Options = {
   chart: {
     backgroundColor: 'transparent',
     style: { fontFamily: '"Inter Variable", ui-sans-serif, system-ui, sans-serif' },
-    spacing: [8, 4, 4, 0],
+    // Left spacing must leave room for wide y-axis labels like "2,500"
+    spacing: [8, 4, 4, 6],
     // Charts stay calm: short animations, none with reduced motion
     animation: prefersReducedMotion ? false : { duration: 300 },
   },
