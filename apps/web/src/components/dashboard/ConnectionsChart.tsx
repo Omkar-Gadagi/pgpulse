@@ -42,7 +42,8 @@ export function ConnectionsChart({ getPoints, subscribeLive }: MetricsFeed) {
       },
       xAxis: { type: 'datetime' },
       yAxis: { min: 0, allowDecimals: false },
-      legend: { enabled: true, align: 'right', verticalAlign: 'top', margin: 8, padding: 0 },
+      // Below the plot: three items don't fit beside the title on narrow cards
+      legend: { enabled: true, align: 'center', verticalAlign: 'bottom', margin: 6, padding: 0, itemDistance: 16 },
       tooltip: {
         shared: true,
         formatter() {

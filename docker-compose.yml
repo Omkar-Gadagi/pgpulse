@@ -1,7 +1,15 @@
 # pgPulse — one-command demo
+#   cp .env.example .env
 #   docker compose up --build
-# Services: postgres (monitored + app DBs), loadgen (fake traffic).
-# The server and web services are added in later steps.
+#   open http://localhost:5173
+#
+# Services
+#   postgres  PostgreSQL 16 with pg_stat_statements: demo_shop (monitored) + pgpulse (app)
+#   loadgen   fake traffic: pgbench + deliberately slow queries
+#   server    pgPulse API (Express + Socket.IO), read-only access to demo_shop
+#   web       pgPulse UI (static React build served by nginx)
+#
+# Host ports are configurable in .env: POSTGRES_PORT, SERVER_PORT, WEB_PORT.
 
 name: pgpulse
 
@@ -57,6 +65,51 @@ services:
       - ./docker/loadgen/run.sh:/loadgen/run.sh:ro
     # Run through bash so the script works even without the exec bit (Windows checkouts)
     entrypoint: ["bash", "/loadgen/run.sh"]
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Inside the compose network the database is reached by its service name
+      # ("postgres") on its container port (5432), not localhost:5433.
+      # Passwords containing URL special characters (@ : / ?) must be %-encoded here.
+      TARGET_DATABASE_URL: postgres://${READER_USER:-pgpulse_reader}:${READER_PASSWORD}@postgres:5432/demo_shop
+      APP_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/pgpulse
+      SERVER_PORT: 4000
+      # The browser loads the UI from the web container's HOST port
+      CORS_ORIGIN: http://localhost:${WEB_PORT:-5173}
+      COLLECT_INTERVAL_MS: ${COLLECT_INTERVAL_MS:-2000}
+      SAMPLE_INTERVAL_MS: ${SAMPLE_INTERVAL_MS:-60000}
+      TARGET_STATEMENT_TIMEOUT_MS: ${TARGET_STATEMENT_TIMEOUT_MS:-5000}
+    ports:
+      - "${SERVER_PORT:-4000}:4000"
+    healthcheck:
+      # busybox wget ships with alpine; /api/health answers 200 while the API is up
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:4000/api/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Baked into the JS bundle: the BROWSER calls this URL, so it must be the
+        # server's host-facing address, not the internal "server:4000".
+        VITE_API_URL: http://localhost:${SERVER_PORT:-4000}
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-5173}:8080"
     restart: unless-stopped
 
 volumes:
