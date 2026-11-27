@@ -1,5 +1,13 @@
 // Thin typed wrapper around fetch for the pgPulse REST API.
-import type { Health, HistoryRange, MetricsHistory, QueryList, QuerySort, QueryStats } from './types'
+import type {
+  Activity,
+  Health,
+  HistoryRange,
+  MetricsHistory,
+  QueryList,
+  QuerySort,
+  QueryStats,
+} from './types'
 
 /** Base URL of the pgPulse server. Baked in at build time by Vite. */
 export const API_URL: string = (import.meta.env.VITE_API_URL || 'http://localhost:4000').replace(
@@ -62,6 +70,8 @@ export const api = {
 
   query: (queryId: string, signal?: AbortSignal) =>
     getJson<QueryStats>(`/api/queries/${encodeURIComponent(queryId)}`, signal),
+
+  activity: (signal?: AbortSignal) => getJson<Activity>('/api/activity', signal),
 }
 
 /** Turn anything thrown into a message fit for the UI. */

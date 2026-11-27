@@ -13,6 +13,7 @@ When an app slows down, the cause is very often the database: one expensive quer
 - **Live dashboard over WebSockets.** Five KPI cards (active connections, TPS, cache hit %, database size, longest running query) that update every 2 seconds and turn amber or red at thresholds.
 - **Live Highcharts.** A transactions/sec line and a "connections by state" stacked area covering the last 15 minutes. They are pre-filled from stored history, then new points are appended with `series.addPoint` instead of re-rendering the chart.
 - **Slow queries page.** Search (debounced), sort by total time, mean time or calls, % share of total execution time, a donut of the top 10, and a detail drawer with formatted SQL, a copy button and per-query cache hit ratio.
+- **Activity & Locks.** Every session from `pg_stat_activity` (state, wait event, how long its transaction has been open) and a **blocking tree** built from `pg_blocking_pids()`. It shows which session holds the lock, who is queued behind it, and the exact lock each one waits for (from `pg_locks`). The page polls every 3 seconds, pauses while the tab is hidden, and can be paused to read a snapshot.
 - **Shareable state.** Sort, search and the open query live in the URL (`/queries?sort=mean_time&q=orders&queryId=…`). The dashboard's top-5 rows link straight to a query's drawer.
 - **Metric history.** A sample is saved to pgPulse's own database every 60 seconds and kept for 7 days.
 - **Safe by design.** It never writes to the monitored database: a dedicated `pg_monitor` role, read-only sessions, a 5-second statement timeout and a pool of at most 5 connections.
@@ -26,6 +27,10 @@ When an app slows down, the cause is very often the database: one expensive quer
     <td><img src="docs/screenshots/query-drawer.png" alt="Query detail drawer with formatted SQL and statistics"></td>
   </tr>
 </table>
+
+![Activity & Locks: an idle-in-transaction session blocking two writers](docs/screenshots/activity.png)
+
+*Activity & Locks catching the classic incident: a client opened a transaction, updated a row and went quiet ("idle in transaction"), so two other writers queue behind its row lock.*
 
 ## Quick start (Docker)
 
@@ -43,7 +48,7 @@ Open **http://localhost:5173**. The dashboard goes live within a few seconds.
 | Service | What it is | Host port |
 |---|---|---|
 | `postgres` | PostgreSQL 16 with `pg_stat_statements`: `demo_shop` (monitored) and `pgpulse` (app) | `5433` |
-| `loadgen` | `pgbench` traffic plus slow queries on a 500k-row table with no index | n/a |
+| `loadgen` | `pgbench` traffic, slow queries on a 500k-row table with no index, and a staged lock conflict every 30–60 s | n/a |
 | `server` | pgPulse API (Express + Socket.IO) | `4000` |
 | `web` | pgPulse UI (static build served by nginx) | `5173` |
 
@@ -130,6 +135,7 @@ The cache-hit KPI shows a **30-second average**, because a single 2-second windo
 | `GET` | `/api/queries?sort=total_time&limit=50&search=` | `{ sort, limit, search, totalExecTimeMs, queries[] }`. `sort` ∈ `total_time`, `mean_time`, `calls` (whitelisted); `limit` 1–200. |
 | `GET` | `/api/queries/:queryId` | One statement: SQL, calls, total/mean/min/max time, rows, block hits/reads, cache hit ratio, % of total. 404 if unknown. |
 | `GET` | `/api/metrics/history?range=1h` | `{ range, samples[] }`, oldest first; `range` ∈ `1h`, `6h`, `24h`. |
+| `GET` | `/api/activity` | `{ ts, summary, sessions[] }`. Each session has state, wait event, transaction/query/state durations, `blockedBy[]`, `blocking[]` and `waitingFor { locktype, mode, relation }`. |
 
 Invalid input gets a `400` with the allowed values, and an unreachable database gets a `503` with the reason. Search text and ids are bind parameters, and `ORDER BY` comes from a server-side whitelist, so there's no SQL injection path.
 
@@ -164,24 +170,24 @@ pgpulse/
 │   │   │   ├── config.js        environment variables, validated
 │   │   │   ├── socket.js        dashboard room, starts/stops the collectors
 │   │   │   ├── db/              target (read-only) and app pools, startup migration
-│   │   │   ├── collectors/      overview (deltas), queries, 60s history sampler
-│   │   │   ├── routes/          health, overview, queries, metrics
+│   │   │   ├── collectors/      overview (deltas), queries, activity, 60s history sampler
+│   │   │   ├── routes/          health, overview, queries, metrics, activity
 │   │   │   └── sql/             the statistics queries, as real .sql files
 │   │   ├── scripts/watch-metrics.js
 │   │   └── Dockerfile
 │   └── web/                     React + TypeScript UI
 │       ├── src/
 │       │   ├── app/             router, layout, live-status provider
-│       │   ├── pages/           Dashboard, Queries
-│       │   ├── components/      layout/, dashboard/, queries/, ui/ (shadcn)
-│       │   ├── hooks/           useSocket, useMetrics, useQueries, …
+│       │   ├── pages/           Dashboard, Queries, Activity
+│       │   ├── components/      layout/, dashboard/, queries/, activity/, ui/ (shadcn)
+│       │   ├── hooks/           useSocket, useMetrics, useQueries, useActivity, …
 │       │   ├── charts/          Highcharts setup, dark theme, live-window helper
 │       │   └── lib/             api client, types, formatters, thresholds
 │       ├── nginx.conf
 │       └── Dockerfile
 ├── docker/
 │   ├── postgres/                init.sh + init.sql (databases, read-only role, schema)
-│   └── loadgen/run.sh           pgbench + slow queries + long sleeps
+│   └── loadgen/run.sh           pgbench, slow queries, long sleeps, a staged lock conflict
 ├── docs/screenshots/
 ├── docker-compose.yml
 └── .env.example
@@ -192,7 +198,7 @@ pgpulse/
 - [x] Live dashboard (KPIs, TPS, connections, top queries, cache gauge)
 - [x] Slow queries page (search, sort, detail drawer, top-10 donut)
 - [x] One-command Docker demo
-- [ ] **Activity & Locks**: live sessions and a blocking-lock tree
+- [x] **Activity & Locks**: live sessions and a blocking-lock tree
 - [ ] **Tables & Indexes**: sizes, dead rows, vacuum status, unused indexes (treemap)
 - [ ] History range picker (1h / 6h / 24h; the API already supports it)
 - [ ] **Alerts**: threshold rules and alert history

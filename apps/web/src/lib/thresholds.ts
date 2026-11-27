@@ -22,6 +22,22 @@ export function longestQueryStatus(seconds: number | null): Status {
   return 'healthy'
 }
 
+// Activity & Locks
+export const LONG_XACT_WARNING_S = 60 // open transaction > 1 min → amber
+export const LONG_XACT_CRITICAL_S = 300 // > 5 min → red (holds locks, blocks vacuum)
+
+export function longTransactionStatus(seconds: number | null): Status {
+  if (seconds === null) return 'neutral'
+  if (seconds > LONG_XACT_CRITICAL_S) return 'critical'
+  if (seconds > LONG_XACT_WARNING_S) return 'warning'
+  return 'healthy'
+}
+
+/** Any session stuck behind another one's lock is worth a red flag. */
+export function blockedStatus(blocked: number): Status {
+  return blocked > 0 ? 'critical' : 'healthy'
+}
+
 /** Words shown next to the colour, so status never relies on colour alone. */
 export const STATUS_LABEL: Record<Status, string> = {
   healthy: 'Healthy',

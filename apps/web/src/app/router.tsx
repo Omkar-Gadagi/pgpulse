@@ -16,6 +16,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, lazy: async () => ({ Component: (await import('@/pages/Dashboard')).default }) },
           { path: 'queries', lazy: async () => ({ Component: (await import('@/pages/Queries')).default }) },
+          { path: 'activity', lazy: async () => ({ Component: (await import('@/pages/Activity')).default }) },
           { path: '*', lazy: async () => ({ Component: (await import('@/pages/NotFound')).default }) },
         ],
       },

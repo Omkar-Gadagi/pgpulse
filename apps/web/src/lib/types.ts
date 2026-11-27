@@ -74,6 +74,53 @@ export interface TopQueries {
   queries: QueryStats[]
 }
 
+// ── Activity & Locks (GET /api/activity) ──
+export interface LockWait {
+  /** e.g. "transactionid" (waiting for another transaction to finish), "relation", "tuple" */
+  locktype: string
+  /** e.g. "ShareLock", "RowExclusiveLock" */
+  mode: string
+  /** table name when the lock is on a relation, otherwise null */
+  relation: string | null
+}
+
+export interface Session {
+  pid: number
+  username: string | null
+  applicationName: string | null
+  clientAddr: string | null
+  /** active | idle | idle in transaction | idle in transaction (aborted) | … | null */
+  state: string | null
+  waitEventType: string | null
+  waitEvent: string | null
+  query: string
+  connectedSeconds: number | null
+  xactSeconds: number | null
+  querySeconds: number | null
+  stateSeconds: number | null
+  /** pids holding the lock this session waits for */
+  blockedBy: number[]
+  /** pids waiting on a lock this session holds */
+  blocking: number[]
+  waitingFor: LockWait | null
+}
+
+export interface ActivitySummary {
+  total: number
+  active: number
+  idle: number
+  idleInTransaction: number
+  waitingOnLock: number
+  blocked: number
+  longestTransactionSeconds: number
+}
+
+export interface Activity {
+  ts: string
+  summary: ActivitySummary
+  sessions: Session[]
+}
+
 // ── Socket.IO event maps (gives typed socket.on / socket.emit) ──
 export interface ServerToClientEvents {
   'metrics:update': (snapshot: MetricsSnapshot) => void

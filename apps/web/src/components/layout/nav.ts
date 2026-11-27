@@ -14,7 +14,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', icon: Gauge, to: '/' },
   { label: 'Queries', icon: ScrollText, to: '/queries' },
-  { label: 'Activity & Locks', icon: Lock, soon: true },
+  { label: 'Activity & Locks', icon: Lock, to: '/activity' },
   { label: 'Tables & Indexes', icon: Table2, soon: true },
   { label: 'Alerts', icon: Bell, soon: true },
   { label: 'Settings', icon: Settings, soon: true },

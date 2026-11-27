@@ -60,6 +60,10 @@ FROM generate_series(1, 500000) AS g
 WHERE NOT EXISTS (SELECT 1 FROM orders_archive LIMIT 1);
 
 ANALYZE orders_archive;
+
+-- One hot row that the lock-conflict loop fights over
+CREATE TABLE IF NOT EXISTS lock_demo (id INT PRIMARY KEY, val INT NOT NULL);
+INSERT INTO lock_demo VALUES (1, 0) ON CONFLICT (id) DO NOTHING;
 SQL
 log "orders_archive ready ($("${PSQL[@]}" -tAc 'SELECT count(*) FROM orders_archive') rows)"
 
@@ -76,7 +80,7 @@ pgbench_loop() {
 slow_query_loop() {
   while true; do
     cid=$((RANDOM % 20000))
-    "${PSQL[@]}" > /dev/null <<SQL
+    PGAPPNAME=loadgen-slow-queries "${PSQL[@]}" > /dev/null <<SQL
 -- full scan: filter on un-indexed column
 SELECT * FROM orders_archive WHERE customer_id = ${cid};
 
@@ -106,13 +110,44 @@ long_query_loop() {
     sleep $((20 + RANDOM % 40))
     secs=$((3 + RANDOM % 38))
     log "long-running query: pg_sleep(${secs})"
-    "${PSQL[@]}" -c "SELECT pg_sleep(${secs});" > /dev/null
+    PGAPPNAME=loadgen-long-query "${PSQL[@]}" -c "SELECT pg_sleep(${secs});" > /dev/null
+  done
+}
+
+# ── 7. Lock conflict every 30–60 s (for Activity & Locks) ────
+# The classic production incident: a client opens a transaction, updates a
+# row, then goes off to do something else without committing. Postgres shows
+# it as "idle in transaction", and it keeps holding the row lock, so every
+# other writer to that row queues up behind it.
+#   holder   UPDATE row 1, then idle in transaction for 20 s
+#   waiter 1 UPDATE row 1 → blocked by holder
+#   waiter 2 UPDATE row 1 → blocked by holder and waiter 1 (a chain)
+lock_conflict_loop() {
+  while true; do
+    sleep $((30 + RANDOM % 30))
+    log "lock conflict: holder idle in transaction for 20s, 2 waiters queued behind it"
+
+    # \! runs a shell command INSIDE psql while the transaction stays open, so
+    # the backend sits in "idle in transaction" holding the row lock.
+    PGAPPNAME=loadgen-lock-holder "${PSQL[@]}" > /dev/null <<'SQL' &
+BEGIN;
+UPDATE lock_demo SET val = val + 1 WHERE id = 1;
+\! sleep 20
+COMMIT;
+SQL
+    sleep 2
+    PGAPPNAME=loadgen-lock-waiter "${PSQL[@]}" -c "UPDATE lock_demo SET val = val + 1 WHERE id = 1;" > /dev/null &
+    sleep 1
+    PGAPPNAME=loadgen-lock-waiter "${PSQL[@]}" -c "UPDATE lock_demo SET val = val - 1 WHERE id = 1;" > /dev/null &
+    # wait only for this round's three sessions (this function runs in its own subshell)
+    wait
   done
 }
 
 pgbench_loop &
 slow_query_loop &
 long_query_loop &
+lock_conflict_loop &
 log "load generator running"
 
 # Keep PID 1 alive; `wait` returns immediately when a trapped signal arrives.

@@ -15,6 +15,7 @@ import { healthRouter } from './routes/health.js';
 import { createOverviewRouter } from './routes/overview.js';
 import { queriesRouter } from './routes/queries.js';
 import { metricsRouter } from './routes/metrics.js';
+import { activityRouter } from './routes/activity.js';
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use('/api', healthRouter);
 app.use('/api', createOverviewRouter(live.collector));
 app.use('/api', queriesRouter);
 app.use('/api', metricsRouter);
+app.use('/api', activityRouter);
 
 // Unknown /api/* paths get JSON, not Express's default HTML page
 app.use('/api', (_req, res) => {
